@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>Library Registration</h1>
+      <p class="subtitle">Create your library account and get your personal QR code for check-in.</p>
+
+      <div id="registerMessage" class="form-message" style="display:none;"></div>
+
+      <form id="registerForm" novalidate>
+        <div class="form-group">
+          <label for="libraryId">Library ID</label>
+          <input type="text" id="libraryId" name="libraryId" placeholder="e.g. LIB-2024-001" required>
+        </div>
+
+        <div class="form-group">
+          <label for="name">Full Name</label>
+          <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+        </div>
+
+        <div class="form-group">
+          <label for="email">Email (Optional)</label>
+          <input type="email" id="email" name="email" placeholder="your@email.com">
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Create a password" required minlength="6">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;">Create Account</button>
+      </form>
+
+      <!-- QR preview will appear after successful registration -->
+      <div id="qrPreview" class="qr-preview">
+        <h2>Your Personal QR Code</h2>
+        <p>Scan this QR code at the library entrance to check in/out.</p>
+        <img id="qrImage" src="" alt="QR Code">
+        <p>Save this image to your phone for easy access.</p>
+        <button id="downloadQrBtn" class="btn btn-secondary" onclick="downloadQr()">Download QR Code</button>
+      </div>
+
+      <p class="subtitle" style="margin-top:1.5rem;">
+        Already have an account? <a href="/login.html">Login here</a>
+      </p>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    const registerForm = document.getElementById('registerForm');
+    const registerMessage = document.getElementById('registerMessage');
+    const qrPreview = document.getElementById('qrPreview');
+    const qrImage = document.getElementById('qrImage');
+
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+
+      const libraryId = document.getElementById('libraryId').value.trim();
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!libraryId || !name || !password) {
+        Auth.showFormMessage('registerMessage', 'Please fill in all required fields', 'error');
+        return;
+      }
+
+      const submitBtn = registerForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating account...';
+
+      try {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ libraryId, name, email: email || null, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Registration failed');
+        }
+
+        // Show QR code
+        qrImage.src = data.qrDataUrl;
+        qrPreview.style.display = 'block';
+
+        // Hide form
+        registerForm.style.display = 'none';
+        registerMessage.style.display = 'none';
+
+        Auth.showFormMessage('registerMessage', 'Account created successfully! Save your QR code.', 'success');
+
+        // Auto redirect after 5 seconds
+        setTimeout(() => {
+          window.location.href = '/login.html';
+        }, 5000);
+      } catch (error) {
+        Auth.showFormMessage('registerMessage', error.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      }
+    });
+
+    function downloadQr() {
+      const img = qrImage;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const imgObj = new Image();
+
+      imgObj.onload = () => {
+        canvas.width = imgObj.width;
+        canvas.height = imgObj.height;
+        ctx.drawImage(imgObj, 0, 0);
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'library-qr-code.png';
+          a.click();
+          URL.revokeObjectURL(url);
+        }, 'image/png');
+      };
+      imgObj.src = img.src;
+    }
+  </script>
+</body>
+</html>

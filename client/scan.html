@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Entry/Exit - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <style>
+    .scan-container { max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+    .scan-card { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    .scan-card h1 { margin-bottom: 0.5rem; }
+    #reader { width: 100%; max-width: 400px; margin: 1rem auto; }
+    .manual-input { margin-top: 1.5rem; }
+    .manual-input label { display: block; font-weight: 600; margin-bottom: 0.3rem; }
+    .manual-input input { width: 100%; padding: 0.7rem; border: 1px solid #bdc3c7; border-radius: 8px; font-size: 1rem; }
+    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+    .nav-links { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .nav-links a { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
+    .message { padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; }
+    .message.success { background: #e9f7ef; color: #2e7d32; }
+    .message.error { background: #fdecea; color: #c0392b; }
+    #scanResult { font-size: 1.1rem; font-weight: 600; margin-top: 1rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="scan-container">
+    <div class="scan-card">
+      <h1>📷 Scan to Enter / Exit</h1>
+      <p style="color:#7f8c8d;margin-bottom:1rem;">Point your camera at a QR code, or type the ID manually below.</p>
+
+      <div class="nav-links">
+        <a href="/dashboard.html" class="btn btn-secondary">Back</a>
+      </div>
+
+      <div id="reader"></div>
+
+      <div id="scanResult"></div>
+
+      <div class="manual-input">
+        <label for="manualId">Or enter QR / Library ID manually</label>
+        <input type="text" id="manualId" placeholder="Paste QR token or Library ID here">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="manualScanBtn">Submit</button>
+        <button class="btn btn-secondary" id="startCameraBtn">Start Camera</button>
+        <button class="btn btn-secondary" id="stopCameraBtn">Stop Camera</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/vendor/html5-qrcode/html5-qrcode.min.js"></script>
+  <script>
+    let scanRes = document.getElementById('scanResult');
+    let scanner = null;
+    let lastScan = '';
+    let lastScanAt = 0;
+
+    (async () => {
+      if (!Auth.isLoggedIn()) { window.location.href = '/login.html'; return; }
+    })();
+
+    document.getElementById('manualScanBtn').addEventListener('click', async () => {
+      const val = document.getElementById('manualId').value.trim();
+      if (!val) return;
+      await submitScan(val);
+    });
+
+    document.getElementById('startCameraBtn').addEventListener('click', async () => {
+      if (typeof Html5Qrcode === 'undefined') { showResult('QR scanner failed to load. Refresh the page or use manual entry.', false); return; }
+      if (scanner) return;
+      scanner = new Html5Qrcode('reader');
+      try {
+        await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 250, height: 250 } }, decodedText => {
+          const now = Date.now();
+          if (decodedText === lastScan && now - lastScanAt < 3000) return;
+          lastScan = decodedText; lastScanAt = now;
+          document.getElementById('manualId').value = decodedText;
+          submitScan(decodedText);
+        }, () => {});
+        showResult('Camera ready. Point it at a QR code.', true);
+      } catch (error) { scanner = null; showResult('Camera unavailable: ' + error.message, false); }
+    });
+
+    document.getElementById('stopCameraBtn').addEventListener('click', () => {
+      if (scanner) { scanner.stop().catch(() => {}); scanner.clear(); scanner = null; }
+    });
+
+    async function submitScan(val) {
+      try {
+        const payload = /^[a-f0-9]{64}$/i.test(val) ? { qrToken: val } : { libraryId: val };
+        const res = await Auth.authFetch('/api/entry/scan', { method: 'POST', body: JSON.stringify(payload) });
+        if (!res) return;
+        const data = await res.json();
+        showResult(data.message || data.error, res.ok);
+      } catch (error) { showResult('Network error. Please try again.', false); }
+    }
+
+    function showResult(message, success) {
+      scanRes.textContent = message;
+      scanRes.className = 'message ' + (success ? 'success' : 'error');
+    }
+  </script>
+</body>
+</html>

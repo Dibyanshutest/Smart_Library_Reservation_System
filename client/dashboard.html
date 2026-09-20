@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <style>
+    .dashboard {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .dashboard-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .dashboard-header h1 {
+      font-size: 1.8rem;
+      color: #2c3e50;
+    }
+
+    .student-info {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      margin-bottom: 1.5rem;
+    }
+
+    .student-info h2 {
+      margin-bottom: 1rem;
+      color: #34495e;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .info-item {
+      padding: 0.8rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+
+    .info-item label {
+      font-size: 0.8rem;
+      color: #7f8c8d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .info-item p {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-top: 0.25rem;
+    }
+
+    .strikes-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      font-weight: 700;
+    }
+
+    .strikes-low { background: #e9f7ef; color: #27ae60; }
+    .strikes-mid { background: #fef3cd; color: #f39c12; }
+    .strikes-high { background: #fdecea; color: #c0392b; }
+
+    .cooldown-warning {
+      background: #fdecea;
+      color: #c0392b;
+      padding: 0.8rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .section {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      margin-bottom: 1.5rem;
+    }
+
+    .section h2 {
+      margin-bottom: 1rem;
+      color: #34495e;
+    }
+
+    .qr-container {
+      text-align: center;
+      padding: 1rem;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+
+    .qr-container img {
+      max-width: 200px;
+      border: 3px solid white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .qr-container p {
+      margin-top: 0.5rem;
+      color: #7f8c8d;
+      font-size: 0.9rem;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .loans-table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow-x: auto;
+      display: block;
+    }
+
+    .loans-table th, .loans-table td {
+      padding: 0.75rem 0.5rem;
+      text-align: left;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 0.9rem;
+    }
+
+    .loans-table th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #34495e;
+    }
+
+    .loans-table td.due-soon { color: #f39c12; font-weight: 600; }
+    .loans-table td.overdue { color: #c0392b; font-weight: 600; }
+
+    .penalties-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .penalties-list li {
+      padding: 0.6rem 0;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 0.9rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .penalties-list .penalty-reason {
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+
+    .penalties-list .penalty-date {
+      color: #7f8c8d;
+      font-size: 0.8rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      font-size: 0.9rem;
+      padding: 0.4rem 0.8rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #7f8c8d;
+    }
+
+    .fine-balance {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+
+    .fine-balance.has-fines { color: #c0392b; }
+    .fine-balance.no-fines { color: #27ae60; }
+
+    @media (max-width: 600px) {
+      .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .loans-table th, .loans-table td {
+        padding: 0.5rem 0.25rem;
+        font-size: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <div class="dashboard-header">
+      <h1>📚 My Dashboard</h1>
+      <div class="nav-links">
+        <a href="/seat-map.html" class="btn btn-primary">Seat Map</a>
+        <a href="/scan.html" class="btn btn-secondary">Scan Entry</a>
+        <a href="/catalog.html" class="btn btn-secondary">Catalog</a>
+        <button onclick="Auth.logout()" class="btn btn-secondary" style="cursor:pointer;">Logout</button>
+      </div>
+    </div>
+
+    <div class="student-info">
+      <h2>My Profile</h2>
+      <div class="info-grid" id="profileGrid">
+        <div class="info-item"><label>Library ID</label><p id="profileLibId">—</p></div>
+        <div class="info-item"><label>Name</label><p id="profileName">—</p></div>
+        <div class="info-item"><label>Email</label><p id="profileEmail">—</p></div>
+        <div class="info-item"><label>Strikes</label><p id="profileStrikes">—</p></div>
+        <div class="info-item"><label>Fine Balance</label><p id="profileFine" class="fine-balance">—</p></div>
+      </div>
+      <div id="cooldownWarning" class="cooldown-warning" style="display:none;"></div>
+    </div>
+
+    <div class="section">
+      <h2>My QR Code</h2>
+      <div class="qr-container" id="qrContainer">
+        <p>Loading QR code...</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Current Loans</h2>
+      <div id="loansSection">
+        <p class="empty-state">No active loans</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Penalties & History</h2>
+      <div id="penaltiesSection">
+        <p class="empty-state">No penalties recorded</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    (async () => {
+      if (!Auth.isLoggedIn()) { window.location.href = '/login.html'; return; }
+
+      try {
+        const res = await Auth.authFetch('/api/students/me');
+        if (!res) return;
+        const data = await res.json();
+        const s = data.student;
+
+        document.getElementById('profileLibId').textContent = s.libraryId;
+        document.getElementById('profileName').textContent = s.name;
+        document.getElementById('profileEmail').textContent = s.email || '—';
+        document.getElementById('profileStrikes').textContent = s.strikes;
+
+        const strikesEl = document.getElementById('profileStrikes');
+        strikesEl.className = 'strikes-badge ' + (s.strikes >= 3 ? 'strikes-high' : s.strikes >= 1 ? 'strikes-mid' : 'strikes-low');
+
+        const fineEl = document.getElementById('profileFine');
+        fineEl.textContent = '₹' + s.fineBalance;
+        fineEl.className = 'fine-balance ' + (s.fineBalance > 0 ? 'has-fines' : 'no-fines');
+
+        if (s.cooldownUntil) {
+          const cd = document.getElementById('cooldownWarning');
+          cd.style.display = 'block';
+          cd.textContent = '⚠ You are blocked from booking until ' + new Date(s.cooldownUntil).toLocaleString();
+        }
+      } catch (e) { console.error(e); }
+
+      try {
+        const qrRes = await Auth.authFetch('/api/students/me/qr');
+        if (qrRes) {
+          const qrData = await qrRes.json();
+          if (!qrRes.ok || !qrData.qrDataUrl || !qrData.qrDataUrl.startsWith('data:image/')) {
+            throw new Error(qrData.error || 'QR image was not generated');
+          }
+          const image = document.createElement('img');
+          image.src = qrData.qrDataUrl;
+          image.alt = 'Personal QR Code';
+          image.addEventListener('error', () => {
+            document.getElementById('qrContainer').innerHTML = '<p class="empty-state">QR image could not be displayed. Use manual library ID at the scanner.</p>';
+          });
+          const container = document.getElementById('qrContainer');
+          container.innerHTML = '<p>Show this at the entry gate</p><button class="btn btn-secondary" onclick="downloadQR()" style="margin-top:0.5rem;">Download QR</button>';
+          container.prepend(image);
+        }
+      } catch (e) {
+        document.getElementById('qrContainer').innerHTML = '<p class="empty-state">QR unavailable. Use your library ID at the scanner.</p>';
+        console.error(e);
+      }
+
+      try {
+        // Loans are in the profile data already; reload profile for loans
+        const profileRes = await Auth.authFetch('/api/students/me');
+        if (profileRes) {
+          const profileData = await profileRes.json();
+          const loans = profileData.loans || [];
+          const loansEl = document.getElementById('loansSection');
+          if (loans.length === 0) {
+            loansEl.innerHTML = '<p class="empty-state">No active loans</p>';
+            return;
+          }
+          const now = new Date();
+          loansEl.innerHTML = `
+            <table class="loans-table">
+              <thead><tr><th>Book</th><th>Author</th><th>Due Date</th><th>Fine</th></tr></thead>
+              <tbody>${loans.map(l => {
+                const due = new Date(l.due_at);
+                const daysLate = Math.ceil((now - due) / 86400000);
+                const dueClass = due < now ? 'overdue' : (daysLate <= 3 ? 'due-soon' : '');
+                return `<tr>
+                  <td>${l.title}</td>
+                  <td>${l.author || '—'}</td>
+                  <td class="${dueClass}">${due.toLocaleDateString()}${due < now ? ' (OVERDUE)' : ''}</td>
+                  <td>₹${l.fine_charged || 0}</td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          `;
+        }
+      } catch (e) { console.error(e); }
+
+      try {
+        const penRes = await Auth.authFetch('/api/students/me/penalties');
+        if (penRes) {
+          const penData = await penRes.json();
+          const penalties = penData.penalties || [];
+          const penEl = document.getElementById('penaltiesSection');
+          if (penalties.length === 0) {
+            penEl.innerHTML = '<p class="empty-state">No penalties recorded</p>';
+            return;
+          }
+          penEl.innerHTML = `
+            <ul class="penalties-list">
+              ${penalties.map(p => `
+                <li>
+                  <span class="penalty-reason">${p.reason}</span>
+                  <span>${p.waived_by ? '⚡ Waived' : '⏳ Active'}</span>
+                  <span class="penalty-date">${new Date(p.created_at).toLocaleString()}</span>
+                </li>
+              `).join('')}
+            </ul>
+          `;
+        }
+      } catch (e) { console.error(e); }
+    })();
+
+    function downloadQR() {
+      const img = document.querySelector('#qrContainer img');
+      if (!img) return;
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const imgObj = new Image();
+      imgObj.onload = () => {
+        canvas.width = imgObj.width;
+        canvas.height = imgObj.height;
+        ctx.drawImage(imgObj, 0, 0);
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'my-qr-code.png';
+          a.click();
+          URL.revokeObjectURL(url);
+        }, 'image/png');
+      };
+      imgObj.src = img.src;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seat Map - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <style>
+    .seat-container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    .seat-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+    .seat-header h1 { font-size: 1.8rem; color: #2c3e50; }
+    .seat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+    .seat {
+      padding: 0.8rem 0.4rem;
+      border-radius: 8px;
+      border: 0;
+      width: 100%;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .seat:hover { transform: translateY(-2px); }
+    .seat.available { background: #27ae60; color: white; }
+    .seat.held { background: #f39c12; color: white; }
+    .seat.occupied { background: #e74c3c; color: white; }
+    .seat.maintenance { background: #95a5a6; color: white; cursor: default; }
+    .seat:disabled { opacity: 0.85; cursor: not-allowed; }
+    .seat .seat-icon { font-size: 1.2rem; display: block; margin-bottom: 2px; }
+    .seat small { display: block; font-size: 0.7rem; font-weight: 400; }
+    .legend { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem; }
+    .legend-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
+    .legend-dot { width: 14px; height: 14px; border-radius: 3px; }
+    .booking-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); align-items: center; justify-content: center; z-index: 100; }
+    .booking-modal.active { display: flex; }
+    .modal-content { background: white; border-radius: 12px; padding: 2rem; max-width: 400px; text-align: center; }
+    .modal-content h2 { margin-bottom: 1rem; }
+    .countdown { font-size: 2rem; font-weight: 700; color: #f39c12; margin: 1rem 0; }
+    .btn-row { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem; }
+    .nav-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .nav-links a { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
+    @media (max-width: 600px) { .seat-grid { grid-template-columns: repeat(4, 1fr); } }
+  </style>
+</head>
+<body>
+  <div class="seat-container">
+    <div class="seat-header">
+      <h1>📍 Live Seat Map</h1>
+      <div class="nav-links">
+        <a href="/dashboard.html" class="btn btn-secondary">Back</a>
+        <a href="/scan.html" class="btn btn-secondary">Scan Entry</a>
+      </div>
+    </div>
+    <div class="seat-grid" id="seatGrid"></div>
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:#27ae60"></span> Available</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#f39c12"></span> Held (booked)</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span> Occupied</div>
+      <div class="legend-item"><span class="legend-dot" style="background:#95a5a6"></span> Maintenance</div>
+    </div>
+  </div>
+
+  <div class="booking-modal" id="bookingModal">
+    <div class="modal-content">
+      <h2>Confirm Booking</h2>
+      <p id="modalSeatLabel"></p>
+      <div class="countdown" id="countdown">15:00</div>
+      <p style="color:#7f8c8d;font-size:0.9rem;">Booked seats expire after 15 minutes</p>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="confirmBookBtn">Confirm</button>
+        <button class="btn btn-secondary" id="cancelBookBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/socket.js"></script>
+  <script>
+    let pendingSeatId = null;
+
+    (async () => {
+      if (!Auth.isLoggedIn()) { window.location.href = '/login.html'; return; }
+      await renderSeats();
+      startSocket();
+    })();
+
+    async function renderSeats() {
+      try {
+        const res = await Auth.authFetch('/api/seats');
+        if (!res) return;
+        const data = await res.json();
+        renderSeatData(data.seats);
+      } catch (e) { console.error(e); }
+    }
+
+    function renderSeatData(seats) {
+      const grid = document.getElementById('seatGrid');
+      const icons = { available: '🟢', held: '🟡', occupied: '🔴', maintenance: '⚫' };
+      const labels = { available: 'Available', held: 'Held', occupied: 'Occupied', maintenance: 'Maintenance' };
+      grid.innerHTML = seats.map(s => {
+        const isAvailable = s.status === 'available';
+        return `<button type="button" class="seat ${s.status}" data-id="${s.id}" onclick="openBooking(${s.id})" ${isAvailable ? '' : 'disabled'} aria-label="Seat ${s.seat_label}, ${labels[s.status]}">
+          <span class="seat-icon">${icons[s.status]}</span>
+          <span>${s.seat_label}</span>
+          <small>${labels[s.status]}</small>
+        </button>`;
+      }).join('');
+    }
+
+    Socket.onSeatUpdate(renderSeatData);
+
+    function openBooking(seatId) {
+      pendingSeatId = seatId;
+      const seat = document.querySelector(`[data-id="${seatId}"]`);
+      document.getElementById('modalSeatLabel').textContent = `Seat ${seat ? seat.textContent.trim() : seatId}`;
+      document.getElementById('bookingModal').classList.add('active');
+      startCountdown();
+    }
+
+    document.getElementById('confirmBookBtn').addEventListener('click', async () => {
+      try {
+        const res = await Auth.authFetch(`/api/seats/${pendingSeatId}/book`, { method: 'POST' });
+        if (!res) return;
+        if (!res.ok) {
+          const data = await res.json();
+          alert(data.error);
+          return;
+        }
+        document.getElementById('bookingModal').classList.remove('active');
+        renderSeats();
+      } catch (e) { console.error(e); }
+    });
+
+    document.getElementById('cancelBookBtn').addEventListener('click', () => {
+      document.getElementById('bookingModal').classList.remove('active');
+      stopCountdown();
+    });
+
+    let countdownInterval = null;
+    let countdownSeconds = 15 * 60;
+    function startCountdown() {
+      countdownSeconds = 15 * 60;
+      stopCountdown();
+      countdownInterval = setInterval(() => {
+        countdownSeconds--;
+        const m = Math.floor(countdownSeconds / 60).toString().padStart(2, '0');
+        const s = (countdownSeconds % 60).toString().padStart(2, '0');
+        const el = document.getElementById('countdown');
+        if (el) el.textContent = `${m}:${s}`;
+        if (countdownSeconds <= 0) stopCountdown();
+      }, 1000);
+    }
+    function stopCountdown() {
+      if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    }
+  </script>
+</body>
+</html>

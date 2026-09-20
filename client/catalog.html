@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catalog - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <style>
+    .catalog-container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    .catalog-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+    .catalog-header h1 { font-size: 1.8rem; color: #2c3e50; }
+    .search-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .search-bar input, .search-bar select { padding: 0.6rem; border: 1px solid #bdc3c7; border-radius: 8px; font-size: 0.95rem; }
+    .search-bar input { min-width: 200px; }
+    .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+    .book-card { background: white; border-radius: 12px; padding: 1.2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+    .book-card h3 { font-size: 1rem; margin-bottom: 0.3rem; }
+    .book-card .author { font-size: 0.85rem; color: #7f8c8d; margin-bottom: 0.5rem; }
+    .book-card .meta { font-size: 0.8rem; color: #95a5a6; margin-bottom: 0.8rem; }
+    .book-card .copies { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .book-card .copies.low { color: #e74c3c; }
+    .book-card .copies.ok { color: #27ae60; }
+    .nav-links { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .nav-links a { font-size: 0.9rem; padding: 0.4rem 0.8rem; }
+    .empty-state { text-align: center; padding: 2rem; color: #7f8c8d; }
+  </style>
+</head>
+<body>
+  <div class="catalog-container">
+    <div class="catalog-header">
+      <h1>📖 Library Catalog</h1>
+      <div class="nav-links">
+        <a href="/dashboard.html" class="btn btn-secondary">Dashboard</a>
+        <a href="/seat-map.html" class="btn btn-secondary">Seat Map</a>
+      </div>
+    </div>
+    <div class="search-bar" style="margin-bottom:1.5rem;">
+      <input type="text" id="searchInput" placeholder="Search by title or author...">
+      <select id="categoryFilter">
+        <option value="">All Categories</option>
+      </select>
+    </div>
+    <div id="staffTools" class="book-card" style="display:none;margin-bottom:1.5rem;">
+      <h2>Staff Book Management</h2>
+      <div class="search-bar">
+        <input id="bookTitle" placeholder="Title">
+        <input id="bookAuthor" placeholder="Author">
+        <input id="bookCategory" placeholder="Category">
+        <input id="bookCopies" type="number" min="1" value="1" placeholder="Copies">
+        <button class="btn btn-primary" id="addBookBtn">Add Book</button>
+      </div>
+    </div>
+    <div class="book-grid" id="bookGrid"><p class="empty-state">Loading...</p></div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    let allBooks = [];
+
+    (async () => {
+      if (!Auth.isLoggedIn()) { window.location.href = '/login.html'; return; }
+      await loadCatalog();
+    })();
+
+    async function loadCatalog() {
+      try {
+        const res = await Auth.authFetch('/api/books');
+        if (!res) return;
+        const data = await res.json();
+        allBooks = data.books || [];
+          if (Auth.getUserRole() === 'admin' || Auth.getUserRole() === 'librarian') document.getElementById('staffTools').style.display = 'block';
+        populateCategories();
+        renderBooks(allBooks);
+      } catch (e) { console.error(e); }
+    }
+
+    function populateCategories() {
+      const cats = [...new Set(allBooks.map(b => b.category).filter(Boolean))];
+      const sel = document.getElementById('categoryFilter');
+      sel.innerHTML = '<option value="">All Categories</option>' +
+        cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function renderBooks(books) {
+      const grid = document.getElementById('bookGrid');
+      if (books.length === 0) { grid.innerHTML = '<p class="empty-state">No books found</p>'; return; }
+      grid.innerHTML = books.map(b => `
+        <div class="book-card">
+          <h3>${b.title}</h3>
+          <div class="author">${b.author || 'Unknown'}</div>
+          <div class="meta">${b.category || ''} ${b.isbn ? '• ' + b.isbn : ''}</div>
+          <div class="copies ${b.available_copies <= 2 ? 'low' : 'ok'}">
+            ${b.available_copies} of ${b.total_copies} available
+          </div>
+          ${b.available_copies > 0 ? `<button class="btn btn-primary" onclick="borrowBook(${b.id})">Borrow</button>` : '<span>Unavailable</span>'}
+          ${isStaff() ? `<button class="btn btn-secondary" onclick="editBook(${b.id})">Edit</button><button class="btn btn-secondary" onclick="deleteBook(${b.id})">Delete</button>` : ''}
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input', filterBooks);
+    document.getElementById('categoryFilter').addEventListener('change', filterBooks);
+
+    function filterBooks() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      const cat = document.getElementById('categoryFilter').value;
+      const filtered = allBooks.filter(b => {
+        const matchQ = !q || (b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q);
+        const matchC = !cat || b.category === cat;
+        return matchQ && matchC;
+      });
+      renderBooks(filtered);
+    }
+
+    async function borrowBook(bookId) {
+      try {
+        const res = await Auth.authFetch('/api/loans', {
+          method: 'POST',
+          body: JSON.stringify({ bookId })
+        });
+        if (!res) return;
+        const data = await res.json();
+        alert(data.message || data.error);
+        if (res.ok) loadCatalog();
+      } catch (e) { alert('Network error'); }
+    }
+
+    function isStaff() {
+      return ['admin', 'librarian'].includes(Auth.getUserRole());
+    }
+
+    document.getElementById('addBookBtn').addEventListener('click', async () => {
+      const body = {
+        title: document.getElementById('bookTitle').value.trim(),
+        author: document.getElementById('bookAuthor').value.trim(),
+        category: document.getElementById('bookCategory').value.trim(),
+        totalCopies: Number(document.getElementById('bookCopies').value)
+      };
+      const res = await Auth.authFetch('/api/books', { method: 'POST', body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || 'Could not add book');
+      document.getElementById('bookTitle').value = '';
+      document.getElementById('bookAuthor').value = '';
+      document.getElementById('bookCategory').value = '';
+      await loadCatalog();
+    });
+
+    async function editBook(bookId) {
+      const book = allBooks.find(item => item.id === bookId);
+      if (!book) return;
+      const title = prompt('Book title', book.title);
+      if (!title) return;
+      const copies = Number(prompt('Total copies', book.total_copies));
+      if (!Number.isInteger(copies) || copies < 1) return alert('Enter a valid copy count');
+      const res = await Auth.authFetch(`/api/books/${bookId}`, { method: 'PUT', body: JSON.stringify({ title, totalCopies: copies, availableCopies: Math.min(book.available_copies, copies) }) });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || 'Could not update book');
+      loadCatalog();
+    }
+
+    async function deleteBook(bookId) {
+      if (!confirm('Delete this book?')) return;
+      const res = await Auth.authFetch(`/api/books/${bookId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || 'Could not delete book');
+      loadCatalog();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+  <style>
+    .admin-dashboard {
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+    }
+
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .admin-header h1 {
+      font-size: 1.8rem;
+      color: #2c3e50;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: 12px;
+      padding: 1.2rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      border-left: 4px solid #3498db;
+    }
+
+    .stat-card.occupied { border-left-color: #e74c3c; }
+    .stat-card.held { border-left-color: #f39c12; }
+    .stat-card.available { border-left-color: #27ae60; }
+
+    .stat-card .stat-label {
+      font-size: 0.8rem;
+      color: #7f8c8d;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #2c3e50;
+      margin-top: 0.25rem;
+    }
+
+    .section {
+      background: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+      margin-bottom: 1.5rem;
+    }
+
+    .section h2 {
+      margin-bottom: 1rem;
+      color: #34495e;
+    }
+
+    .settings-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .setting-field label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #34495e;
+      margin-bottom: 0.3rem;
+    }
+
+    .setting-field input {
+      width: 100%;
+      padding: 0.6rem;
+      border: 1px solid #bdc3c7;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    .setting-field input:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 0 3px rgba(52,152,219,0.2);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .data-table th, .data-table td {
+      padding: 0.7rem 0.5rem;
+      text-align: left;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 0.9rem;
+    }
+
+    .data-table th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #34495e;
+    }
+
+    .data-table tr:hover {
+      background: #f8f9fa;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #7f8c8d;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a, .nav-links button {
+      font-size: 0.9rem;
+      padding: 0.4rem 0.8rem;
+      cursor: pointer;
+    }
+
+    .message {
+      padding: 0.8rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    .message.success { background: #e9f7ef; color: #2e7d32; }
+    .message.error { background: #fdecea; color: #c0392b; }
+
+    @media (max-width: 600px) {
+      .admin-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-dashboard">
+    <div class="admin-header">
+      <h1>🛠️ Admin Dashboard</h1>
+      <div class="nav-links">
+        <a href="/seat-map.html" class="btn btn-primary">Seat Map</a>
+        <a href="/catalog.html" class="btn btn-secondary">Catalog</a>
+        <button onclick="Auth.logout()" class="btn btn-secondary" style="cursor:pointer;">Logout</button>
+      </div>
+    </div>
+
+    <div id="adminMessage" class="message" style="display:none;"></div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Occupied</div>
+        <div class="stat-value" id="occupiedCount">—</div>
+      </div>
+      <div class="stat-card held">
+        <div class="stat-label">Held</div>
+        <div class="stat-value" id="heldCount">—</div>
+      </div>
+      <div class="stat-card available">
+        <div class="stat-label">Available</div>
+        <div class="stat-value" id="availableCount">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Seats</div>
+        <div class="stat-value" id="totalCount">—</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Analytics</h2>
+      <div id="analyticsSummary">Loading analytics...</div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Hour</th><th>Check-ins</th></tr></thead><tbody id="peakHoursBody"></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>System Settings</h2>
+      <form id="settingsForm" class="settings-form">
+        <div class="setting-field"><label>Booking hold (minutes)</label><input type="number" id="holdMinutes" required></div>
+        <div class="setting-field"><label>Strikes before cooldown</label><input type="number" id="strikeThreshold" required></div>
+        <div class="setting-field"><label>Cooldown (hours)</label><input type="number" id="cooldownHours" required></div>
+        <div class="setting-field"><label>No-show fine (₹)</label><input type="number" id="noShowFine" required></div>
+        <div class="setting-field"><label>Overdue fine per day (₹)</label><input type="number" id="overdueFine" required></div>
+        <div class="setting-field"><label>Loan period (days)</label><input type="number" id="loanDays" required></div>
+      </form>
+      <div class="btn-row">
+        <button type="button" id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Defaulters (Most No-Shows)</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Library ID</th><th>Name</th><th>No-Shows</th><th>Last Penalty</th></tr></thead>
+          <tbody id="defaultersBody"><tr><td colspan="4" class="empty-state">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Penalty Waivers</h2>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Reason</th><th>Date</th><th>Action</th></tr></thead><tbody id="penaltiesBody"><tr><td colspan="4" class="empty-state">Loading...</td></tr></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>Seat Editor</h2>
+      <form id="seatForm" class="settings-form">
+        <div class="setting-field"><label for="seatLabel">Label</label><input id="seatLabel" required placeholder="G1"></div>
+        <div class="setting-field"><label for="seatHall">Hall</label><input id="seatHall" value="main" required></div>
+        <div class="setting-field"><label for="seatX">Column</label><input id="seatX" type="number" min="1" required></div>
+        <div class="setting-field"><label for="seatY">Row</label><input id="seatY" type="number" min="1" required></div>
+      </form>
+      <div class="btn-row"><button type="button" id="addSeatBtn" class="btn btn-primary">Add Seat</button></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Seat</th><th>Status</th><th>Action</th></tr></thead><tbody id="seatsBody"><tr><td colspan="3" class="empty-state">Loading...</td></tr></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>Book Availability Override</h2>
+      <form id="availabilityForm" class="settings-form">
+        <div class="setting-field"><label for="availabilityBookId">Book ID</label><input id="availabilityBookId" type="number" min="1" required></div>
+        <div class="setting-field"><label for="availabilityCopies">Available copies</label><input id="availabilityCopies" type="number" min="0" required></div>
+      </form>
+      <div class="btn-row"><button type="button" id="saveAvailabilityBtn" class="btn btn-primary">Update Availability</button></div>
+    </div>
+
+    <div class="section" id="staffSection">
+      <h2>Staff Management</h2>
+      <form id="staffForm" class="settings-form">
+        <div class="setting-field"><label for="staffName">Name</label><input id="staffName" required></div>
+        <div class="setting-field"><label for="staffEmail">Email</label><input id="staffEmail" type="email" required></div>
+        <div class="setting-field"><label for="staffPassword">Password</label><input id="staffPassword" type="password" minlength="8" required></div>
+        <div class="setting-field"><label for="staffRole">Role</label><select id="staffRole"><option value="librarian">Librarian</option><option value="admin">Admin</option></select></div>
+      </form>
+      <div class="btn-row"><button type="button" id="addStaffBtn" class="btn btn-primary">Create Staff Account</button></div>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody id="staffBody"><tr><td colspan="3" class="empty-state">Loading...</td></tr></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>Quick Actions</h2>
+      <div class="btn-row">
+        <a href="/catalog.html" class="btn btn-secondary">Manage Books</a>
+        <a href="/seat-map.html" class="btn btn-secondary">Manage Seats</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/auth.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/socket.js"></script>
+  <script>
+    (async () => {
+      if (!Auth.isLoggedIn()) { window.location.href = '/login.html'; return; }
+
+      const role = Auth.getUserRole();
+      if (role !== 'admin' && role !== 'librarian') {
+        window.location.href = '/dashboard.html';
+        return;
+      }
+
+      loadOccupancy();
+      loadSettings();
+      loadDefaulters();
+      loadAnalytics();
+      loadPenalties();
+      loadSeats();
+      loadStaff();
+      Socket.onSeatUpdate(updateOccupancyFromSeats);
+      Socket.startSocket();
+    })();
+
+    async function loadOccupancy() {
+      try {
+        const res = await Auth.authFetch('/api/admin/occupancy');
+        if (!res) return;
+        const data = await res.json();
+        document.getElementById('occupiedCount').textContent = data.occupied;
+        document.getElementById('heldCount').textContent = data.held;
+        document.getElementById('availableCount').textContent = data.available;
+        document.getElementById('totalCount').textContent = data.total;
+      } catch (e) { console.error(e); }
+    }
+
+    function updateOccupancyFromSeats(seats) {
+      const counts = seats.reduce((result, seat) => {
+        result[seat.status] = (result[seat.status] || 0) + 1;
+        return result;
+      }, {});
+      document.getElementById('occupiedCount').textContent = counts.occupied || 0;
+      document.getElementById('heldCount').textContent = counts.held || 0;
+      document.getElementById('availableCount').textContent = counts.available || 0;
+      document.getElementById('totalCount').textContent = seats.length;
+    }
+
+    async function loadAnalytics() {
+      try {
+        const res = await Auth.authFetch('/api/admin/analytics');
+        if (!res) return;
+        const data = await res.json();
+        const c = data.circulation;
+        document.getElementById('analyticsSummary').textContent = `Loans: ${c.total_loans || 0} total, ${c.active_loans || 0} active, ${c.returned_loans || 0} returned. Fines: ₹${c.fines_charged || 0}`;
+        document.getElementById('peakHoursBody').innerHTML = (data.peakHours || []).map(row => `<tr><td>${String(row.hour).padStart(2, '0')}:00</td><td>${row.visits}</td></tr>`).join('') || '<tr><td colspan="2" class="empty-state">No check-in data yet</td></tr>';
+      } catch (error) { showMessage('Could not load analytics', 'error'); }
+    }
+
+    async function loadPenalties() {
+      try {
+        const res = await Auth.authFetch('/api/admin/penalties');
+        if (!res) return;
+        const data = await res.json();
+        document.getElementById('penaltiesBody').innerHTML = (data.penalties || []).map(p => `<tr><td>${p.name} (${p.library_id})</td><td>${p.reason}</td><td>${new Date(p.created_at).toLocaleString()}</td><td>${p.waived_at ? 'Waived' : `<button class="btn btn-secondary" onclick="waivePenalty(${p.id})">Waive</button>`}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-state">No penalties yet</td></tr>';
+      } catch (error) { showMessage('Could not load penalties', 'error'); }
+    }
+
+    async function waivePenalty(id) {
+      const res = await Auth.authFetch(`/api/penalties/${id}/waive`, { method: 'POST' });
+      if (!res) return;
+      const data = await res.json();
+      showMessage(data.message || data.error, res.ok ? 'success' : 'error');
+      if (res.ok) loadPenalties();
+    }
+
+    async function loadSeats() {
+      const res = await Auth.authFetch('/api/seats');
+      if (!res) return;
+      const data = await res.json();
+      document.getElementById('seatsBody').innerHTML = data.seats.map(s => `<tr><td>${s.seat_label}</td><td>${s.status}</td><td>${['available','maintenance'].includes(s.status) ? `<button class="btn btn-secondary" onclick="toggleMaintenance(${s.id}, '${s.status}')">${s.status === 'maintenance' ? 'Enable' : 'Maintain'}</button><button class="btn btn-secondary" onclick="removeSeat(${s.id})">Remove</button>` : 'Active'}</td></tr>`).join('');
+    }
+
+    async function toggleMaintenance(id, status) {
+      const res = await Auth.authFetch(`/api/admin/seats/${id}`, { method: 'PATCH', body: JSON.stringify({ status: status === 'maintenance' ? 'available' : 'maintenance' }) });
+      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) loadSeats();
+    }
+
+    async function removeSeat(id) {
+      const res = await Auth.authFetch(`/api/admin/seats/${id}`, { method: 'DELETE' });
+      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) loadSeats();
+    }
+
+    async function loadStaff() {
+      const res = await Auth.authFetch('/api/admin/staff');
+      if (!res) return;
+      const data = await res.json();
+      if (!res.ok) { document.getElementById('staffSection').style.display = 'none'; return; }
+      document.getElementById('staffBody').innerHTML = data.staff.map(s => `<tr><td>${s.name}</td><td>${s.email}</td><td>${s.role}</td></tr>`).join('');
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await Auth.authFetch('/api/admin/settings');
+        if (!res) return;
+        const data = await res.json();
+        const s = data.settings;
+        document.getElementById('holdMinutes').value = s.booking_hold_minutes;
+        document.getElementById('strikeThreshold').value = s.strikes_before_cooldown;
+        document.getElementById('cooldownHours').value = s.cooldown_hours;
+        document.getElementById('noShowFine').value = s.no_show_fine;
+        document.getElementById('overdueFine').value = s.overdue_fine_per_day;
+        document.getElementById('loanDays').value = s.loan_period_days;
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadDefaulters() {
+      try {
+        const res = await Auth.authFetch('/api/admin/defaulters');
+        if (!res) return;
+        const data = await res.json();
+        const body = document.getElementById('defaultersBody');
+        if (data.defaulters.length === 0) {
+          body.innerHTML = '<tr><td colspan="4" class="empty-state">No defaulters yet</td></tr>';
+          return;
+        }
+        body.innerHTML = data.defaulters.map(d => `
+          <tr>
+            <td>${d.library_id}</td>
+            <td>${d.name}</td>
+            <td>${d.no_show_count}</td>
+            <td>${new Date(d.last_penalty).toLocaleString()}</td>
+          </tr>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+      const settings = {
+        booking_hold_minutes: document.getElementById('holdMinutes').value,
+        strikes_before_cooldown: document.getElementById('strikeThreshold').value,
+        cooldown_hours: document.getElementById('cooldownHours').value,
+        no_show_fine: document.getElementById('noShowFine').value,
+        overdue_fine_per_day: document.getElementById('overdueFine').value,
+        loan_period_days: document.getElementById('loanDays').value
+      };
+
+      try {
+        const res = await Auth.authFetch('/api/admin/settings', {
+          method: 'PUT',
+          body: JSON.stringify({ settings })
+        });
+        if (!res) return;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save settings');
+        showMessage('Settings saved successfully', 'success');
+      } catch (e) {
+        showMessage(e.message, 'error');
+      }
+    });
+
+    document.getElementById('addSeatBtn').addEventListener('click', async () => {
+      const body = { seatLabel: document.getElementById('seatLabel').value, hall: document.getElementById('seatHall').value, posX: document.getElementById('seatX').value, posY: document.getElementById('seatY').value };
+      const res = await Auth.authFetch('/api/admin/seats', { method: 'POST', body: JSON.stringify(body) });
+      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) loadSeats();
+    });
+
+    document.getElementById('saveAvailabilityBtn').addEventListener('click', async () => {
+      const body = { availableCopies: document.getElementById('availabilityCopies').value };
+      const res = await Auth.authFetch(`/api/admin/books/${document.getElementById('availabilityBookId').value}/availability`, { method: 'PUT', body: JSON.stringify(body) });
+      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error');
+    });
+
+    document.getElementById('addStaffBtn').addEventListener('click', async () => {
+      const body = { name: document.getElementById('staffName').value, email: document.getElementById('staffEmail').value, password: document.getElementById('staffPassword').value, role: document.getElementById('staffRole').value };
+      const res = await Auth.authFetch('/api/admin/staff', { method: 'POST', body: JSON.stringify(body) });
+      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) { loadStaff(); document.getElementById('staffForm').reset(); }
+    });
+
+    function showMessage(message, type) {
+      const el = document.getElementById('adminMessage');
+      el.textContent = message;
+      el.className = 'message ' + type;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+  </script>
+</body>
+</html>
