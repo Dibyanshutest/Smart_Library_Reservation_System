@@ -12,104 +12,11 @@ const {
   requireStaff,
   requireAdmin,
   positiveInteger,
-  nonNegativeInteger,
-  rateLimit
+  nonNegativeInteger
 } = require('../middleware');
 const { emitSeatUpdate } = require('../sockets');
 
 const router = express.Router();
-
-// ============================================
-// STUDENT PROFILE & PENALTIES (student-authenticated)
-// ============================================
-
-/**
- * GET /students/me — Current student profile.
- */
-router.get('/students/me', requireAuth, (req, res) => {
-  const student = db.prepare('SELECT * FROM students WHERE id = ?').get(req.userId);
-  if (!student) {
-    return res.status(404).json({ error: 'Student not found' });
-  }
-
-  const loans = db.prepare(`
-    SELECT loans.*, books.title, books.author
-    FROM loans
-    JOIN books ON loans.book_id = books.id
-    WHERE loans.student_id = ?
-    ORDER BY loans.issued_at DESC
-  `).all(req.userId);
-
-  const penalties = db.prepare(`
-    SELECT penalties.*, students.name
-    FROM penalties
-    JOIN students ON penalties.student_id = students.id
-    WHERE penalties.student_id = ?
-    ORDER BY penalties.created_at DESC
-  `).all(req.userId);
-
-  res.json({
-    student: {
-      id: student.id,
-      libraryId: student.library_id,
-      name: student.name,
-      email: student.email,
-      strikes: student.strikes,
-      cooldownUntil: student.cooldown_until,
-      fineBalance: student.fine_balance
-    },
-    loans,
-    penalties
-  });
-});
-
-/**
- * GET /students/me/penalties — Penalty history for the current student.
- */
-router.get('/students/me/penalties', requireAuth, (req, res) => {
-  const penalties = db.prepare(`
-    SELECT penalties.*, students.name
-    FROM penalties
-    JOIN students ON penalties.student_id = students.id
-    WHERE penalties.student_id = ?
-    ORDER BY penalties.created_at DESC
-  `).all(req.userId);
-
-  res.json({ penalties });
-});
-
-/**
- * POST /penalties/:id/waive — Waive a penalty (staff only).
- */
-router.post('/penalties/:id/waive', requireAuth, (req, res) => {
-  if (req.role !== 'admin' && req.role !== 'librarian') {
-    return res.status(403).json({ error: 'Staff access required' });
-  }
-
-  const penaltyId = positiveInteger(req.params.id);
-  if (!penaltyId) return res.status(400).json({ error: 'Invalid penalty ID' });
-
-  const penalty = db.prepare('SELECT * FROM penalties WHERE id = ?').get(penaltyId);
-  if (!penalty) {
-    return res.status(404).json({ error: 'Penalty not found' });
-  }
-  if (penalty.waived_at) {
-    return res.status(409).json({ error: 'Penalty is already waived' });
-  }
-
-  db.transaction(() => {
-    db.prepare(`UPDATE penalties SET waived_by = ?, waived_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .run(req.userId, penaltyId);
-    db.prepare(`
-      UPDATE students
-      SET strikes = CASE WHEN strikes > 0 THEN strikes - 1 ELSE 0 END,
-        cooldown_until = CASE WHEN cooldown_until > CURRENT_TIMESTAMP THEN NULL ELSE cooldown_until END
-      WHERE id = ?
-    `).run(penalty.student_id);
-  })();
-
-  res.json({ message: 'Penalty waived successfully' });
-});
 
 // ============================================
 // ADMIN / ANALYTICS (staff-only)
@@ -217,6 +124,23 @@ router.get('/analytics', requireAuth, requireStaff, (req, res) => {
 });
 
 /**
+ * GET /admin/loans — Full circulation register for staff.
+ */
+router.get('/loans', requireAuth, requireStaff, (req, res) => {
+  const loans = db.prepare(`
+    SELECT loans.id, loans.issued_at, loans.due_at, loans.returned_at,
+           loans.fine_charged, books.title, books.author,
+           students.name, students.library_id
+    FROM loans
+    JOIN books ON books.id = loans.book_id
+    JOIN students ON students.id = loans.student_id
+    ORDER BY CASE WHEN loans.returned_at IS NULL THEN 0 ELSE 1 END,
+             loans.due_at ASC
+  `).all();
+  res.json({ loans });
+});
+
+/**
  * GET /admin/penalties — All penalties (staff only).
  */
 router.get('/penalties', requireAuth, requireStaff, (req, res) => {
@@ -227,6 +151,52 @@ router.get('/penalties', requireAuth, requireStaff, (req, res) => {
     ORDER BY penalties.created_at DESC LIMIT 50
   `).all();
   res.json({ penalties });
+});
+
+// ============================================
+// BORROW REQUESTS
+// ============================================
+
+router.get('/loan-requests', requireAuth, requireStaff, (req, res) => {
+  const requests = db.prepare(`
+    SELECT borrow_requests.id, borrow_requests.status, borrow_requests.requested_at,
+           books.id AS book_id, books.title, books.author,
+           students.id AS student_id, students.name, students.library_id
+    FROM borrow_requests
+    JOIN books ON books.id = borrow_requests.book_id
+    JOIN students ON students.id = borrow_requests.student_id
+    WHERE borrow_requests.status = 'pending'
+    ORDER BY borrow_requests.requested_at ASC
+  `).all();
+  res.json({ requests });
+});
+
+router.post('/loan-requests/:id/approve', requireAuth, requireStaff, (req, res) => {
+  const requestId = positiveInteger(req.params.id);
+  const request = db.prepare(`
+    SELECT borrow_requests.*, books.available_copies
+    FROM borrow_requests JOIN books ON books.id = borrow_requests.book_id
+    WHERE borrow_requests.id = ? AND borrow_requests.status = 'pending'
+  `).get(requestId);
+  if (!request) return res.status(404).json({ error: 'Pending request not found' });
+  if (request.available_copies <= 0) return res.status(409).json({ error: 'No copies available' });
+
+  const loanDays = Number(db.prepare("SELECT value FROM settings WHERE key = 'loan_period_days'").get().value) || 14;
+  const dueDate = new Date(Date.now() + loanDays * 86400000);
+  const result = db.transaction(() => {
+    const loan = db.prepare('INSERT INTO loans (book_id, student_id, due_at) VALUES (?, ?, ?)').run(request.book_id, request.student_id, dueDate.toISOString());
+    db.prepare('UPDATE books SET available_copies = available_copies - 1 WHERE id = ?').run(request.book_id);
+    db.prepare("UPDATE borrow_requests SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ?").run(req.userId, requestId);
+    return loan;
+  })();
+  res.json({ message: 'Request approved', loanId: result.lastInsertRowid, dueDate: dueDate.toISOString() });
+});
+
+router.post('/loan-requests/:id/reject', requireAuth, requireStaff, (req, res) => {
+  const requestId = positiveInteger(req.params.id);
+  const result = db.prepare("UPDATE borrow_requests SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ? WHERE id = ? AND status = 'pending'").run(req.userId, requestId);
+  if (!result.changes) return res.status(404).json({ error: 'Pending request not found' });
+  res.json({ message: 'Request rejected' });
 });
 
 // ============================================

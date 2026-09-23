@@ -93,8 +93,7 @@
           <div class="copies ${b.available_copies <= 2 ? 'low' : 'ok'}">
             ${b.available_copies} of ${b.total_copies} available
           </div>
-          ${b.available_copies > 0 ? `<button class="btn btn-primary" onclick="borrowBook(${b.id})">Borrow</button>` : '<span>Unavailable</span>'}
-          ${isStaff() ? `<button class="btn btn-secondary" onclick="editBook(${b.id})">Edit</button><button class="btn btn-secondary" onclick="deleteBook(${b.id})">Delete</button>` : ''}
+          ${isStaff() ? `<span class="staff-note">Staff inventory view</span><button class="btn btn-secondary" onclick="editBook(${b.id})">Edit</button><button class="btn btn-secondary" onclick="deleteBook(${b.id})">Delete</button>` : (b.available_copies > 0 ? `<button class="btn btn-primary" onclick="requestBook(${b.id})">Request to borrow</button>` : '<span>Unavailable</span>')}
         </div>
       `).join('');
     }
@@ -113,16 +112,15 @@
       renderBooks(filtered);
     }
 
-    async function borrowBook(bookId) {
+    async function requestBook(bookId) {
       try {
-        const res = await Auth.authFetch('/api/loans', {
+        const res = await Auth.authFetch('/api/loans/requests', {
           method: 'POST',
           body: JSON.stringify({ bookId })
         });
         if (!res) return;
         const data = await res.json();
         alert(data.message || data.error);
-        if (res.ok) loadCatalog();
       } catch (e) { alert('Network error'); }
     }
 

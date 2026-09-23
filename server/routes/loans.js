@@ -11,9 +11,9 @@ const {
 const router = express.Router();
 
 /**
- * POST /api/loans — Borrow a book.
+ * POST /api/loans/requests — Submit a borrow request for staff approval.
  */
-router.post('/', requireAuth, (req, res) => {
+router.post('/requests', requireAuth, (req, res) => {
   const { bookId } = req.body;
   const studentId = req.userId;
 
@@ -31,8 +31,42 @@ router.post('/', requireAuth, (req, res) => {
     SELECT * FROM loans WHERE book_id = ? AND student_id = ? AND returned_at IS NULL
   `).get(bookId, studentId);
   if (activeLoan) {
-    return res.status(409).json({ error: 'You already have this book borrowed' });
+    return res.status(409).json({ error: 'You already have this book on loan' });
   }
+
+  const pending = db.prepare(`SELECT id FROM borrow_requests WHERE book_id = ? AND student_id = ? AND status = 'pending'`).get(bookId, studentId);
+  if (pending) return res.status(409).json({ error: 'Borrow request is already pending' });
+
+  const result = db.prepare(`
+    INSERT INTO borrow_requests (book_id, student_id, status) VALUES (?, ?, 'pending')
+  `).run(bookId, studentId);
+
+  res.status(201).json({ message: 'Borrow request sent for approval', requestId: result.lastInsertRowid });
+});
+
+/** GET /api/loans/requests — Current student's requests. */
+router.get('/requests', requireAuth, (req, res) => {
+  const requests = db.prepare(`
+    SELECT borrow_requests.*, books.title, books.author
+    FROM borrow_requests JOIN books ON books.id = borrow_requests.book_id
+    WHERE borrow_requests.student_id = ?
+    ORDER BY borrow_requests.requested_at DESC
+  `).all(req.userId);
+  res.json({ requests });
+});
+
+/**
+ * POST /api/loans — Backwards-compatible direct borrow endpoint for staff.
+ */
+router.post('/', requireAuth, (req, res) => {
+  const { bookId } = req.body;
+  const studentId = req.userId;
+  if (!positiveInteger(bookId)) return res.status(400).json({ error: 'A valid book ID is required' });
+  const book = db.prepare('SELECT * FROM books WHERE id = ?').get(bookId);
+  if (!book) return res.status(404).json({ error: 'Book not found' });
+  if (book.available_copies <= 0) return res.status(409).json({ error: 'No copies available' });
+  const activeLoan = db.prepare(`SELECT * FROM loans WHERE book_id = ? AND student_id = ? AND returned_at IS NULL`).get(bookId, studentId);
+  if (activeLoan) return res.status(409).json({ error: 'You already have this book on loan' });
 
   const loanPeriodDays = Number(db.prepare("SELECT value FROM settings WHERE key = 'loan_period_days'").get().value);
   const dueDate = new Date(Date.now() + loanPeriodDays * 24 * 60 * 60 * 1000);

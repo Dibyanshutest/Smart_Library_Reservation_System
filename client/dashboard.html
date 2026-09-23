@@ -200,6 +200,12 @@
     .fine-balance.has-fines { color: #c0392b; }
     .fine-balance.no-fines { color: #27ae60; }
 
+    .status-banner { padding: 1rem; border-radius: 8px; background: #e8f4f2; color: #115e59; margin-bottom: 1.5rem; font-weight: 600; }
+    .request-status { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; text-transform: capitalize; }
+    .request-status.pending { background: #fef3cd; color: #946200; }
+    .request-status.approved { background: #e9f7ef; color: #26733b; }
+    .request-status.rejected { background: #fdecea; color: #a93226; }
+
     @media (max-width: 600px) {
       .dashboard-header {
         flex-direction: column;
@@ -241,6 +247,8 @@
       <div id="cooldownWarning" class="cooldown-warning" style="display:none;"></div>
     </div>
 
+    <div id="bookingStatus" class="status-banner" style="display:none;" aria-live="polite"></div>
+
     <div class="section">
       <h2>My QR Code</h2>
       <div class="qr-container" id="qrContainer">
@@ -249,10 +257,15 @@
     </div>
 
     <div class="section">
-      <h2>Current Loans</h2>
+      <h2>Active Loans</h2>
       <div id="loansSection">
         <p class="empty-state">No active loans</p>
       </div>
+    </div>
+
+    <div class="section">
+      <h2>Borrow Requests</h2>
+      <div id="requestsSection"><p class="empty-state">No borrow requests yet</p></div>
     </div>
 
     <div class="section">
@@ -260,6 +273,11 @@
       <div id="penaltiesSection">
         <p class="empty-state">No penalties recorded</p>
       </div>
+    </div>
+
+    <div class="section">
+      <h2>Booking & Entry History</h2>
+      <div id="entryHistorySection"><p class="empty-state">No visits recorded yet</p></div>
     </div>
   </div>
 
@@ -283,18 +301,38 @@
         strikesEl.className = 'strikes-badge ' + (s.strikes >= 3 ? 'strikes-high' : s.strikes >= 1 ? 'strikes-mid' : 'strikes-low');
 
         const fineEl = document.getElementById('profileFine');
-        fineEl.textContent = '₹' + s.fineBalance;
-        fineEl.className = 'fine-balance ' + (s.fineBalance > 0 ? 'has-fines' : 'no-fines');
+        fineEl.textContent = '₹' + (Number(s.fineBalance) + Number(s.activeOverdueFine || 0));
+        fineEl.className = 'fine-balance ' + (s.fineBalance > 0 || s.activeOverdueFine > 0 ? 'has-fines' : 'no-fines');
+
+        const booking = s.booking;
+        if (booking) {
+          const statusEl = document.getElementById('bookingStatus');
+          statusEl.style.display = 'block';
+          statusEl.dataset.expires = booking.hold_expires_at || '';
+          statusEl.textContent = booking.status === 'occupied' ? `Seat ${booking.seat_label} is active. Scan again when you leave.` : `Seat ${booking.seat_label} is reserved. Check in within ${formatRemaining(booking.hold_expires_at)}.`;
+          if (booking.status === 'held') setInterval(() => updateBookingCountdown(statusEl), 1000);
+        }
 
         if (s.cooldownUntil) {
           const cd = document.getElementById('cooldownWarning');
           cd.style.display = 'block';
-          cd.textContent = '⚠ You are blocked from booking until ' + new Date(s.cooldownUntil).toLocaleString();
+          cd.textContent = '⚠ You are blocked from booking until ' + formatDateTime(parseDatabaseDate(s.cooldownUntil));
         }
       } catch (e) { console.error(e); }
 
       try {
-        const qrRes = await Auth.authFetch('/api/students/me/qr');
+        const requestRes = await Auth.authFetch('/api/loans/requests');
+        if (requestRes) {
+          const requestData = await requestRes.json();
+          const requests = requestData.requests || [];
+          document.getElementById('requestsSection').innerHTML = requests.length ? `
+            <ul class="penalties-list">${requests.map(r => `<li><span><strong>${r.title}</strong><br><small>${r.author || 'Unknown author'}</small></span><span class="request-status ${r.status}">${r.status}</span></li>`).join('')}</ul>
+          ` : '<p class="empty-state">No borrow requests yet</p>';
+        }
+      } catch (e) { console.error(e); }
+
+      try {
+        const qrRes = await Auth.authFetch('/api/entry/qr');
         if (qrRes) {
           const qrData = await qrRes.json();
           if (!qrRes.ok || !qrData.qrDataUrl || !qrData.qrDataUrl.startsWith('data:image/')) {
@@ -323,26 +361,43 @@
           const loans = profileData.loans || [];
           const loansEl = document.getElementById('loansSection');
           if (loans.length === 0) {
-            loansEl.innerHTML = '<p class="empty-state">No active loans</p>';
-            return;
-          }
-          const now = new Date();
-          loansEl.innerHTML = `
+            loansEl.innerHTML = '<p class="empty-state">No active loans or return countdowns. Approved borrow requests will appear here with a live timer.</p><a href="/catalog.html" class="btn btn-primary">Browse catalog</a>';
+          } else {
+            const now = new Date();
+            loansEl.innerHTML = `
             <table class="loans-table">
-              <thead><tr><th>Book</th><th>Author</th><th>Due Date</th><th>Fine</th></tr></thead>
+              <thead><tr><th>Book</th><th>Author</th><th>Issued</th><th>Return due</th><th>Time left</th><th>Fine</th></tr></thead>
               <tbody>${loans.map(l => {
-                const due = new Date(l.due_at);
+                const issued = parseDatabaseDate(l.issued_at);
+                const due = parseDatabaseDate(l.due_at);
                 const daysLate = Math.ceil((now - due) / 86400000);
                 const dueClass = due < now ? 'overdue' : (daysLate <= 3 ? 'due-soon' : '');
                 return `<tr>
                   <td>${l.title}</td>
                   <td>${l.author || '—'}</td>
-                  <td class="${dueClass}">${due.toLocaleDateString()}${due < now ? ' (OVERDUE)' : ''}</td>
+                  <td>${formatDateTime(issued)}</td>
+                  <td class="${dueClass}">${formatDateTime(due)}${due < now ? ' (OVERDUE)' : ''}</td>
+                  <td class="${dueClass}" data-due="${l.due_at}">${due < now ? 'Overdue' : formatLoanCountdown(due)}</td>
                   <td>₹${l.fine_charged || 0}</td>
                 </tr>`;
               }).join('')}</tbody>
             </table>
-          `;
+            `;
+          }
+
+          const entries = profileData.entryLogs || [];
+          document.getElementById('entryHistorySection').innerHTML = entries.length ? `
+            <table class="loans-table">
+              <thead><tr><th>Seat</th><th>Booked</th><th>Entry</th><th>Exit</th><th>Status</th></tr></thead>
+              <tbody>${entries.map(entry => `<tr>
+                <td>${entry.seat_label}</td>
+                <td>${formatDateTime(parseDatabaseDate(entry.booked_at))}</td>
+                <td>${formatDateTime(parseDatabaseDate(entry.check_in_at))}</td>
+                <td>${formatDateTime(parseDatabaseDate(entry.check_out_at))}</td>
+                <td>${entry.status}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          ` : '<p class="empty-state">No visits recorded yet</p>';
         }
       } catch (e) { console.error(e); }
 
@@ -362,7 +417,7 @@
                 <li>
                   <span class="penalty-reason">${p.reason}</span>
                   <span>${p.waived_by ? '⚡ Waived' : '⏳ Active'}</span>
-                  <span class="penalty-date">${new Date(p.created_at).toLocaleString()}</span>
+                  <span class="penalty-date">${formatDateTime(parseDatabaseDate(p.created_at))}</span>
                 </li>
               `).join('')}
             </ul>
@@ -370,6 +425,43 @@
         }
       } catch (e) { console.error(e); }
     })();
+
+    function formatRemaining(value) {
+      const seconds = Math.max(0, Math.floor((parseDatabaseDate(value).getTime() - Date.now()) / 1000));
+      return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+    }
+
+    function parseDatabaseDate(value) {
+      if (!value) return null;
+      const text = String(value);
+      return new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text : text.replace(' ', 'T') + 'Z');
+    }
+
+    function formatDateTime(value) {
+      return value && !Number.isNaN(value.getTime()) ? value.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+    }
+
+    function updateBookingCountdown(element) {
+      if (!element.dataset.expires) return;
+      const remaining = formatRemaining(element.dataset.expires);
+      element.textContent = remaining === '0m 00s' ? 'Your seat booking has expired. Please book a new seat.' : `Your seat is reserved. Check in within ${remaining}.`;
+    }
+
+    function formatLoanCountdown(due) {
+      const seconds = Math.max(0, Math.floor((due.getTime() - Date.now()) / 1000));
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return days ? `${days}d ${hours}h left` : `${hours}h ${minutes}m left`;
+    }
+
+    setInterval(() => {
+      document.querySelectorAll('[data-due]').forEach(cell => {
+        const due = parseDatabaseDate(cell.dataset.due);
+        if (!due) return;
+        cell.textContent = due < new Date() ? 'Overdue' : formatLoanCountdown(due);
+      });
+    }, 1000);
 
     function downloadQR() {
       const img = document.querySelector('#qrContainer img');

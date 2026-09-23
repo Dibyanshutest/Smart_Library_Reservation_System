@@ -162,6 +162,11 @@
     .message.success { background: #e9f7ef; color: #2e7d32; }
     .message.error { background: #fdecea; color: #c0392b; }
 
+    .status-pill { display: inline-block; padding: 0.25rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+    .status-pill.active { background: #e8f4f2; color: #115e59; }
+    .status-pill.overdue { background: #fdecea; color: #a93226; }
+    .status-pill.returned { background: #eef1f3; color: #627481; }
+
     @media (max-width: 600px) {
       .admin-header {
         flex-direction: column;
@@ -175,7 +180,6 @@
     <div class="admin-header">
       <h1>🛠️ Admin Dashboard</h1>
       <div class="nav-links">
-        <a href="/seat-map.html" class="btn btn-primary">Seat Map</a>
         <a href="/catalog.html" class="btn btn-secondary">Catalog</a>
         <button onclick="Auth.logout()" class="btn btn-secondary" style="cursor:pointer;">Logout</button>
       </div>
@@ -183,29 +187,21 @@
 
     <div id="adminMessage" class="message" style="display:none;"></div>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">Occupied</div>
-        <div class="stat-value" id="occupiedCount">—</div>
-      </div>
-      <div class="stat-card held">
-        <div class="stat-label">Held</div>
-        <div class="stat-value" id="heldCount">—</div>
-      </div>
-      <div class="stat-card available">
-        <div class="stat-label">Available</div>
-        <div class="stat-value" id="availableCount">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Seats</div>
-        <div class="stat-value" id="totalCount">—</div>
-      </div>
-    </div>
-
     <div class="section">
       <h2>Analytics</h2>
       <div id="analyticsSummary">Loading analytics...</div>
       <div class="table-wrap"><table class="data-table"><thead><tr><th>Hour</th><th>Check-ins</th></tr></thead><tbody id="peakHoursBody"></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>Borrow Requests</h2>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Book</th><th>Requested</th><th>Action</th></tr></thead><tbody id="loanRequestsBody"><tr><td colspan="4" class="empty-state">Loading...</td></tr></tbody></table></div>
+    </div>
+
+    <div class="section">
+      <h2>Circulation Register</h2>
+      <p id="circulationSummary" style="color:#627481;margin-bottom:1rem;">Track who currently has each book, issue dates, due dates, and returns.</p>
+      <div class="table-wrap"><table class="data-table"><thead><tr><th>Student</th><th>Book</th><th>Issued</th><th>Return due</th><th>Status</th><th>Action</th></tr></thead><tbody id="loansBody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody></table></div>
     </div>
 
     <div class="section">
@@ -239,18 +235,6 @@
     </div>
 
     <div class="section">
-      <h2>Seat Editor</h2>
-      <form id="seatForm" class="settings-form">
-        <div class="setting-field"><label for="seatLabel">Label</label><input id="seatLabel" required placeholder="G1"></div>
-        <div class="setting-field"><label for="seatHall">Hall</label><input id="seatHall" value="main" required></div>
-        <div class="setting-field"><label for="seatX">Column</label><input id="seatX" type="number" min="1" required></div>
-        <div class="setting-field"><label for="seatY">Row</label><input id="seatY" type="number" min="1" required></div>
-      </form>
-      <div class="btn-row"><button type="button" id="addSeatBtn" class="btn btn-primary">Add Seat</button></div>
-      <div class="table-wrap"><table class="data-table"><thead><tr><th>Seat</th><th>Status</th><th>Action</th></tr></thead><tbody id="seatsBody"><tr><td colspan="3" class="empty-state">Loading...</td></tr></tbody></table></div>
-    </div>
-
-    <div class="section">
       <h2>Book Availability Override</h2>
       <form id="availabilityForm" class="settings-form">
         <div class="setting-field"><label for="availabilityBookId">Book ID</label><input id="availabilityBookId" type="number" min="1" required></div>
@@ -275,14 +259,11 @@
       <h2>Quick Actions</h2>
       <div class="btn-row">
         <a href="/catalog.html" class="btn btn-secondary">Manage Books</a>
-        <a href="/seat-map.html" class="btn btn-secondary">Manage Seats</a>
       </div>
     </div>
   </div>
 
   <script src="/js/auth.js"></script>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="/js/socket.js"></script>
   <script>
     (async () => {
       if (!Auth.isLoggedIn()) { window.location.href = '/login.html'; return; }
@@ -293,39 +274,14 @@
         return;
       }
 
-      loadOccupancy();
       loadSettings();
       loadDefaulters();
       loadAnalytics();
+      loadLoanRequests();
+      loadLoans();
       loadPenalties();
-      loadSeats();
       loadStaff();
-      Socket.onSeatUpdate(updateOccupancyFromSeats);
-      Socket.startSocket();
     })();
-
-    async function loadOccupancy() {
-      try {
-        const res = await Auth.authFetch('/api/admin/occupancy');
-        if (!res) return;
-        const data = await res.json();
-        document.getElementById('occupiedCount').textContent = data.occupied;
-        document.getElementById('heldCount').textContent = data.held;
-        document.getElementById('availableCount').textContent = data.available;
-        document.getElementById('totalCount').textContent = data.total;
-      } catch (e) { console.error(e); }
-    }
-
-    function updateOccupancyFromSeats(seats) {
-      const counts = seats.reduce((result, seat) => {
-        result[seat.status] = (result[seat.status] || 0) + 1;
-        return result;
-      }, {});
-      document.getElementById('occupiedCount').textContent = counts.occupied || 0;
-      document.getElementById('heldCount').textContent = counts.held || 0;
-      document.getElementById('availableCount').textContent = counts.available || 0;
-      document.getElementById('totalCount').textContent = seats.length;
-    }
 
     async function loadAnalytics() {
       try {
@@ -338,12 +294,48 @@
       } catch (error) { showMessage('Could not load analytics', 'error'); }
     }
 
+    async function loadLoanRequests() {
+      const res = await Auth.authFetch('/api/admin/loan-requests');
+      if (!res) return;
+      const data = await res.json();
+      document.getElementById('loanRequestsBody').innerHTML = (data.requests || []).map(r => `<tr><td>${r.name} (${r.library_id})</td><td>${r.title}</td><td>${formatDateTime(r.requested_at)}</td><td><button class="btn btn-primary" onclick="reviewLoanRequest(${r.id}, 'approve')">Approve</button><button class="btn btn-secondary" onclick="reviewLoanRequest(${r.id}, 'reject')">Reject</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty-state">No pending requests</td></tr>';
+    }
+
+    async function loadLoans() {
+      const res = await Auth.authFetch('/api/admin/loans');
+      if (!res) return;
+      const data = await res.json();
+      const active = (data.loans || []).filter(loan => !loan.returned_at);
+      const overdue = active.filter(loan => parseDatabaseDate(loan.due_at) < new Date()).length;
+      document.getElementById('circulationSummary').textContent = `${active.length} book${active.length === 1 ? '' : 's'} currently on loan${overdue ? `, ${overdue} overdue` : ''}. Returned books remain in the register below.`;
+      document.getElementById('loansBody').innerHTML = (data.loans || []).map(loan => {
+        const overdue = !loan.returned_at && parseDatabaseDate(loan.due_at) < new Date();
+        const status = loan.returned_at ? '<span class="status-pill returned">Returned</span>' : (overdue ? '<span class="status-pill overdue">Overdue</span>' : '<span class="status-pill active">On loan</span>');
+        const action = loan.returned_at ? formatDateTime(loan.returned_at) : `<button class="btn btn-primary" onclick="returnLoan(${loan.id})">Mark returned</button>`;
+        return `<tr><td>${loan.name}<br><small>${loan.library_id}</small></td><td>${loan.title}<br><small>${loan.author || 'Unknown author'}</small></td><td>${formatDateTime(loan.issued_at)}</td><td>${formatDateTime(loan.due_at)}</td><td>${status}${loan.fine_charged ? `<br><small>Fine: ₹${loan.fine_charged}</small>` : ''}</td><td>${action}</td></tr>`;
+      }).join('') || '<tr><td colspan="6" class="empty-state">No circulation records</td></tr>';
+    }
+
+    async function returnLoan(id) {
+      const res = await Auth.authFetch(`/api/loans/${id}/return`, { method: 'POST' });
+      const data = await res.json();
+      showMessage(data.message || data.error, res.ok ? 'success' : 'error');
+      if (res.ok) { loadLoans(); loadAnalytics(); }
+    }
+
+    async function reviewLoanRequest(id, action) {
+      const res = await Auth.authFetch(`/api/admin/loan-requests/${id}/${action}`, { method: 'POST' });
+      const data = await res.json();
+      showMessage(data.message || data.error, res.ok ? 'success' : 'error');
+      if (res.ok) { loadLoanRequests(); loadAnalytics(); }
+    }
+
     async function loadPenalties() {
       try {
         const res = await Auth.authFetch('/api/admin/penalties');
         if (!res) return;
         const data = await res.json();
-        document.getElementById('penaltiesBody').innerHTML = (data.penalties || []).map(p => `<tr><td>${p.name} (${p.library_id})</td><td>${p.reason}</td><td>${new Date(p.created_at).toLocaleString()}</td><td>${p.waived_at ? 'Waived' : `<button class="btn btn-secondary" onclick="waivePenalty(${p.id})">Waive</button>`}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-state">No penalties yet</td></tr>';
+        document.getElementById('penaltiesBody').innerHTML = (data.penalties || []).map(p => `<tr><td>${p.name} (${p.library_id})</td><td>${p.reason}</td><td>${formatDateTime(p.created_at)}</td><td>${p.waived_at ? 'Waived' : `<button class="btn btn-secondary" onclick="waivePenalty(${p.id})">Waive</button>`}</td></tr>`).join('') || '<tr><td colspan="4" class="empty-state">No penalties yet</td></tr>';
       } catch (error) { showMessage('Could not load penalties', 'error'); }
     }
 
@@ -355,22 +347,6 @@
       if (res.ok) loadPenalties();
     }
 
-    async function loadSeats() {
-      const res = await Auth.authFetch('/api/seats');
-      if (!res) return;
-      const data = await res.json();
-      document.getElementById('seatsBody').innerHTML = data.seats.map(s => `<tr><td>${s.seat_label}</td><td>${s.status}</td><td>${['available','maintenance'].includes(s.status) ? `<button class="btn btn-secondary" onclick="toggleMaintenance(${s.id}, '${s.status}')">${s.status === 'maintenance' ? 'Enable' : 'Maintain'}</button><button class="btn btn-secondary" onclick="removeSeat(${s.id})">Remove</button>` : 'Active'}</td></tr>`).join('');
-    }
-
-    async function toggleMaintenance(id, status) {
-      const res = await Auth.authFetch(`/api/admin/seats/${id}`, { method: 'PATCH', body: JSON.stringify({ status: status === 'maintenance' ? 'available' : 'maintenance' }) });
-      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) loadSeats();
-    }
-
-    async function removeSeat(id) {
-      const res = await Auth.authFetch(`/api/admin/seats/${id}`, { method: 'DELETE' });
-      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) loadSeats();
-    }
 
     async function loadStaff() {
       const res = await Auth.authFetch('/api/admin/staff');
@@ -410,10 +386,21 @@
             <td>${d.library_id}</td>
             <td>${d.name}</td>
             <td>${d.no_show_count}</td>
-            <td>${new Date(d.last_penalty).toLocaleString()}</td>
+            <td>${formatDateTime(d.last_penalty)}</td>
           </tr>
         `).join('');
       } catch (e) { console.error(e); }
+    }
+
+    function parseDatabaseDate(value) {
+      if (!value) return null;
+      const text = String(value);
+      return new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text : text.replace(' ', 'T') + 'Z');
+    }
+
+    function formatDateTime(value) {
+      const date = parseDatabaseDate(value);
+      return date && !Number.isNaN(date.getTime()) ? date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
     }
 
     document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
@@ -438,12 +425,6 @@
       } catch (e) {
         showMessage(e.message, 'error');
       }
-    });
-
-    document.getElementById('addSeatBtn').addEventListener('click', async () => {
-      const body = { seatLabel: document.getElementById('seatLabel').value, hall: document.getElementById('seatHall').value, posX: document.getElementById('seatX').value, posY: document.getElementById('seatY').value };
-      const res = await Auth.authFetch('/api/admin/seats', { method: 'POST', body: JSON.stringify(body) });
-      const data = await res.json(); showMessage(data.message || data.error, res.ok ? 'success' : 'error'); if (res.ok) loadSeats();
     });
 
     document.getElementById('saveAvailabilityBtn').addEventListener('click', async () => {

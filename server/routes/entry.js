@@ -34,7 +34,7 @@ router.get('/qr', requireAuth, async (req, res) => {
  * POST /api/entry/scan — Check-in/check-out toggle via QR token or library ID.
  * Rate-limited to prevent brute-force QR scanning.
  */
-router.post('/scan', rateLimit({ windowMs: 60000, max: 20 }), (req, res) => {
+router.post('/scan', requireAuth, rateLimit({ windowMs: 60000, max: 20 }), (req, res) => {
   const qrToken = typeof req.body.qrToken === 'string' ? req.body.qrToken.trim() : '';
   const libraryId = typeof req.body.libraryId === 'string' ? req.body.libraryId.trim() : '';
 
@@ -48,6 +48,10 @@ router.post('/scan', rateLimit({ windowMs: 60000, max: 20 }), (req, res) => {
 
   if (!student) {
     return res.status(404).json({ error: 'Invalid QR code' });
+  }
+
+  if (req.role === 'student' && student.id !== req.userId) {
+    return res.status(403).json({ error: 'This QR code belongs to another student' });
   }
 
   // Check for active held seat (check-in)

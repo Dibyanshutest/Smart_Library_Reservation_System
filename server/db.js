@@ -55,6 +55,17 @@ db.exec(`
     fine_charged REAL DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS borrow_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id INTEGER NOT NULL REFERENCES books(id),
+    student_id INTEGER NOT NULL REFERENCES students(id),
+    status TEXT CHECK(status IN ('pending','approved','rejected')) DEFAULT 'pending',
+    requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at DATETIME,
+    reviewed_by INTEGER REFERENCES staff(id),
+    UNIQUE(book_id, student_id, status)
+  );
+
   CREATE TABLE IF NOT EXISTS seats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     seat_label TEXT NOT NULL,

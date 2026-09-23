@@ -20,6 +20,16 @@ router.get('/', (req, res) => {
   res.json({ seats });
 });
 
+router.get('/mine', requireAuth, (req, res) => {
+  const booking = db.prepare(`
+    SELECT id, seat_label, status, held_at, hold_expires_at, occupied_since
+    FROM seats
+    WHERE (held_by = ? AND status = 'held') OR (occupied_by = ? AND status = 'occupied')
+    ORDER BY id LIMIT 1
+  `).get(req.userId, req.userId);
+  res.json({ booking: booking || null });
+});
+
 /**
  * POST /api/seats/:id/book — Book a seat (atomic operation).
  * Enforces cooldown, prevents double-booking, race-condition safe.

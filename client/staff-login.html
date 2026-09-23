@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Staff Sign In - Smart Library System</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/css/auth.css">
+</head>
+<body>
+  <main class="auth-container">
+    <section class="auth-card" aria-labelledby="staff-title">
+      <p class="auth-eyebrow">Operations portal</p>
+      <h1 id="staff-title">Staff sign in</h1>
+      <p class="subtitle">Access seats, catalog tools, and library analytics.</p>
+
+      <div id="loginMessage" class="form-message" role="alert" style="display:none;"></div>
+
+      <form id="staffLoginForm" novalidate>
+        <div class="form-group">
+          <label for="email">Work email</label>
+          <input type="email" id="email" autocomplete="username" placeholder="name@library.com" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" placeholder="Enter your password" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;">Sign in</button>
+      </form>
+
+      <p class="auth-switch"><a href="/index.html">Back to home</a></p>
+    </section>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script>
+    const form = document.getElementById('staffLoginForm');
+    const message = document.getElementById('loginMessage');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button');
+      const email = document.getElementById('email').value.trim().toLowerCase();
+      const password = document.getElementById('password').value;
+
+      if (!email || !password) {
+        Auth.showFormMessage('loginMessage', 'Enter your work email and password.', 'error');
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Signing in...';
+      try {
+        const response = await fetch('/api/auth/staff-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to sign in');
+        Auth.setToken(data.token);
+        window.location.href = '/admin.html';
+      } catch (error) {
+        Auth.showFormMessage('loginMessage', error.message, 'error');
+        button.disabled = false;
+        button.textContent = 'Sign in';
+      }
+    });
+  </script>
+</body>
+</html>
