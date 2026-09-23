@@ -11,10 +11,14 @@ const {
   requireStaff,
   requireAdmin,
   positiveInteger,
-  nonNegativeInteger
+  nonNegativeInteger,
+  rateLimit
 } = require('../middleware');
 
 const router = express.Router();
+const booksRouteRateLimit = rateLimit({ windowMs: 60 * 1000, max: 30 });
+
+router.use(booksRouteRateLimit);
 
 /**
  * GET /api/books — List/search/filter catalog.
@@ -22,6 +26,16 @@ const router = express.Router();
  */
 router.get('/', (req, res) => {
   const { search, category, availability } = req.query;
+
+  if (search !== undefined && typeof search !== 'string') {
+    return res.status(400).json({ error: 'Search query must be a string' });
+  }
+  if (category !== undefined && typeof category !== 'string') {
+    return res.status(400).json({ error: 'Category filter must be a string' });
+  }
+  if (availability !== undefined && typeof availability !== 'string') {
+    return res.status(400).json({ error: 'Availability filter must be a string' });
+  }
 
   // Input length validation to prevent pathological LIKE patterns
   if (search && search.length > 200) {

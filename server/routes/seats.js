@@ -5,11 +5,15 @@ const express = require('express');
 const db = require('../db');
 const {
   requireAuth,
-  positiveInteger
+  positiveInteger,
+  rateLimit
 } = require('../middleware');
 const { emitSeatUpdate } = require('../sockets');
 
 const router = express.Router();
+const seatRouteRateLimit = rateLimit({ windowMs: 60 * 1000, max: 30 });
+
+router.use(seatRouteRateLimit);
 
 /**
  * GET /api/seats — Current status of all seats.
