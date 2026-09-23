@@ -11,7 +11,6 @@ const {
 const { emitSeatUpdate } = require('../sockets');
 
 const router = express.Router();
-const seatWriteRateLimit = rateLimit({ windowMs: 60 * 1000, max: 30 });
 
 /**
  * GET /api/seats — Current status of all seats.
@@ -36,7 +35,7 @@ router.get('/mine', requireAuth, (req, res) => {
  * POST /api/seats/:id/book — Book a seat (atomic operation).
  * Enforces cooldown, prevents double-booking, race-condition safe.
  */
-router.post('/:id/book', requireAuth, seatWriteRateLimit, (req, res) => {
+router.post('/:id/book', rateLimit({ windowMs: 60 * 1000, max: 30 }), requireAuth, (req, res) => {
   const seatId = positiveInteger(req.params.id);
   const studentId = req.userId;
 
@@ -105,7 +104,7 @@ router.post('/:id/book', requireAuth, seatWriteRateLimit, (req, res) => {
 /**
  * POST /api/seats/:id/cancel — Voluntarily cancel a held seat booking (no penalty).
  */
-router.post('/:id/cancel', requireAuth, seatWriteRateLimit, (req, res) => {
+router.post('/:id/cancel', rateLimit({ windowMs: 60 * 1000, max: 30 }), requireAuth, (req, res) => {
   const seatId = positiveInteger(req.params.id);
   const studentId = req.userId;
 

@@ -16,7 +16,6 @@ const {
 } = require('../middleware');
 
 const router = express.Router();
-const writeRateLimit = rateLimit({ windowMs: 60 * 1000, max: 30 });
 
 /**
  * GET /api/books — List/search/filter catalog.
@@ -163,7 +162,7 @@ router.put('/:id', requireAuth, requireStaff, (req, res) => {
 /**
  * DELETE /api/books/:id — Remove a book (staff only).
  */
-router.delete('/:id', requireAuth, requireStaff, writeRateLimit, (req, res) => {
+router.delete('/:id', rateLimit({ windowMs: 60 * 1000, max: 30 }), requireAuth, requireStaff, (req, res) => {
   const bookId = positiveInteger(req.params.id);
   if (!bookId) return res.status(400).json({ error: 'Invalid book ID' });
 
@@ -183,7 +182,7 @@ router.delete('/:id', requireAuth, requireStaff, writeRateLimit, (req, res) => {
  * POST /api/loans — Borrow a book.
  * Requires authentication (student or staff).
  */
-router.post('/', requireAuth, writeRateLimit, (req, res) => {
+router.post('/', rateLimit({ windowMs: 60 * 1000, max: 30 }), requireAuth, (req, res) => {
   const { bookId } = req.body;
   const studentId = req.userId;
 
@@ -230,7 +229,7 @@ router.post('/', requireAuth, writeRateLimit, (req, res) => {
  * POST /api/loans/:id/return — Return a book.
  * Calculates fine if late.
  */
-router.post('/:id/return', requireAuth, writeRateLimit, (req, res) => {
+router.post('/:id/return', rateLimit({ windowMs: 60 * 1000, max: 30 }), requireAuth, (req, res) => {
   const loanId = positiveInteger(req.params.id);
   if (!loanId) return res.status(400).json({ error: 'Invalid loan ID' });
 
