@@ -12,11 +12,15 @@ const {
   requireStaff,
   requireAdmin,
   positiveInteger,
-  nonNegativeInteger
+  nonNegativeInteger,
+  rateLimit
 } = require('../middleware');
 const { emitSeatUpdate } = require('../sockets');
 
 const router = express.Router();
+const adminRouteRateLimit = rateLimit({ windowMs: 60 * 1000, max: 60 });
+
+router.use(adminRouteRateLimit);
 
 // ============================================
 // ADMIN / ANALYTICS (staff-only)

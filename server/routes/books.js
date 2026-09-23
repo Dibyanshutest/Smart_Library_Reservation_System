@@ -11,10 +11,12 @@ const {
   requireStaff,
   requireAdmin,
   positiveInteger,
-  nonNegativeInteger
+  nonNegativeInteger,
+  rateLimit
 } = require('../middleware');
 
 const router = express.Router();
+const writeRateLimit = rateLimit({ windowMs: 60 * 1000, max: 30 });
 
 /**
  * GET /api/books — List/search/filter catalog.
@@ -22,6 +24,16 @@ const router = express.Router();
  */
 router.get('/', (req, res) => {
   const { search, category, availability } = req.query;
+
+  if (search !== undefined && typeof search !== 'string') {
+    return res.status(400).json({ error: 'Search query must be a string' });
+  }
+  if (category !== undefined && typeof category !== 'string') {
+    return res.status(400).json({ error: 'Category filter must be a string' });
+  }
+  if (availability !== undefined && typeof availability !== 'string') {
+    return res.status(400).json({ error: 'Availability filter must be a string' });
+  }
 
   // Input length validation to prevent pathological LIKE patterns
   if (search && search.length > 200) {
@@ -151,7 +163,7 @@ router.put('/:id', requireAuth, requireStaff, (req, res) => {
 /**
  * DELETE /api/books/:id — Remove a book (staff only).
  */
-router.delete('/:id', requireAuth, requireStaff, (req, res) => {
+router.delete('/:id', requireAuth, requireStaff, writeRateLimit, (req, res) => {
   const bookId = positiveInteger(req.params.id);
   if (!bookId) return res.status(400).json({ error: 'Invalid book ID' });
 
@@ -171,7 +183,7 @@ router.delete('/:id', requireAuth, requireStaff, (req, res) => {
  * POST /api/loans — Borrow a book.
  * Requires authentication (student or staff).
  */
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, writeRateLimit, (req, res) => {
   const { bookId } = req.body;
   const studentId = req.userId;
 
@@ -218,7 +230,7 @@ router.post('/', requireAuth, (req, res) => {
  * POST /api/loans/:id/return — Return a book.
  * Calculates fine if late.
  */
-router.post('/:id/return', requireAuth, (req, res) => {
+router.post('/:id/return', requireAuth, writeRateLimit, (req, res) => {
   const loanId = positiveInteger(req.params.id);
   if (!loanId) return res.status(400).json({ error: 'Invalid loan ID' });
 
